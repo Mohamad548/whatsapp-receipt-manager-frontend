@@ -1,59 +1,53 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MessageStatus, WhatsAppMessage } from './types';
 import { Icons } from './constants';
 import MessageList from './components/MessageList';
 import MessageDetail from './components/MessageDetail';
 import SystemDesign from './components/SystemDesign';
 import DashboardOverview from './components/DashboardOverview';
-
-const MOCK_MESSAGES: WhatsAppMessage[] = [
-  {
-    id: '1',
-    wa_id: 'WAM-001',
-    sender_phone: '+989123456789',
-    sender_name: 'علی رضایی',
-    content: 'سلام، رسید پرداخت فاکتور اسفند ماه ضمیمه شد.',
-    timestamp: new Date().toISOString(),
-    status: MessageStatus.NEW,
-    media_url: 'https://picsum.photos/800/1000?random=1',
-    mime_type: 'image/jpeg'
-  },
-  {
-    id: '2',
-    wa_id: 'WAM-002',
-    sender_phone: '+989129876543',
-    sender_name: 'سارا احمدی',
-    content: 'پرداخت انجام شد. لطفا بررسی کنید.',
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-    status: MessageStatus.REVIEWED,
-    media_url: 'https://picsum.photos/800/1000?random=2',
-    mime_type: 'image/jpeg'
-  },
-  {
-    id: '3',
-    wa_id: 'WAM-003',
-    sender_phone: '+989121112233',
-    sender_name: 'حسن پاکدل',
-    content: 'تاییدیه حواله پایا.',
-    timestamp: new Date(Date.now() - 86400000).toISOString(),
-    status: MessageStatus.APPROVED,
-    media_url: 'https://picsum.photos/800/1000?random=3',
-    mime_type: 'image/jpeg'
-  }
-];
+import { fetchMessages, updateMessageStatus as updateStatus } from './api/client';
 
 const App: React.FC = () => {
-  const [messages, setMessages] = useState<WhatsAppMessage[]>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [view, setView] = useState<'dashboard' | 'messages' | 'design'>('dashboard');
+  const [loading, setLoading] = useState(true);
+
+  // بارگذاری پیام‌ها از Backend
+  useEffect(() => {
+    const loadMessages = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchMessages();
+        setMessages(data);
+      } catch (error) {
+        console.error('Error loading messages:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadMessages();
+    
+    // بارگذاری مجدد هر 30 ثانیه
+    const interval = setInterval(loadMessages, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const selectedMessage = useMemo(() => 
     messages.find(m => m.id === selectedMessageId) || null
   , [messages, selectedMessageId]);
 
-  const handleUpdateStatus = (id: string, status: MessageStatus) => {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, status } : m));
+  const handleUpdateStatus = async (id: string, status: MessageStatus) => {
+    try {
+      const updated = await updateStatus(id, status);
+      if (updated) {
+        setMessages(prev => prev.map(m => m.id === id ? updated : m));
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+    }
   };
 
   return (
@@ -106,11 +100,18 @@ const App: React.FC = () => {
         {view === 'messages' && (
           <div className="flex-1 flex overflow-hidden">
             <div className="w-96 border-l border-slate-200 bg-white overflow-y-auto">
-              <MessageList 
-                messages={messages} 
-                selectedId={selectedMessageId} 
-                onSelect={setSelectedMessageId} 
-              />
+              {loading ? (
+                <div className="p-8 text-center text-slate-400">
+                  <Icons.Clock className="w-8 h-8 mx-auto mb-2 animate-spin" />
+                  <p>در حال بارگذاری پیام‌ها...</p>
+                </div>
+              ) : (
+                <MessageList 
+                  messages={messages} 
+                  selectedId={selectedMessageId} 
+                  onSelect={setSelectedMessageId} 
+                />
+              )}
             </div>
             <div className="flex-1 bg-white overflow-y-auto">
               <MessageDetail 
